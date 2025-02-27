@@ -1,10 +1,13 @@
+from itertools import islice;
 import os;
 import pathlib;
 import re;
 from time import time;
-import markdown2;
+import markdown;
+import tables;
 LEN_LIM = 700;
 REPO_URL = 'https://github.com/uwindsorcss/wiki.git';
+TARGET_DIR = '.';
 def recursive_directory_iterator(pth):
     for i in pth.iterdir():
         if i.is_dir():
@@ -12,26 +15,32 @@ def recursive_directory_iterator(pth):
         else:
             yield i;
 def traverse(ts):
-    try:
+    if pathlib.Path('.git').exists():
         os.system('git pull');
-        dat = '';
-        for p in recursive_directory_iterator(pathlib.Path('resources')):
-            if p.suffix == '.md':
-                lmt = p.stat().st_mtime;
-                if lmt > ts:
-                    dat += generate(p);
-        with open("updated.csv", 'w') as fh:
-            fh.write(dat);
-    except OSError as e:
+        try:
+            it = recursive_directory_iterator(pathlib.Path(TARGET_DIR));
+            dat = '';
+            for p in it:
+                if p.suffix == '.md':
+                    lmt = p.stat().st_mtime;
+                    if lmt > ts:
+                        dat += generate(p);
+            with open("updated.csv", 'w') as fh:
+                fh.write(dat);
+        except OSError as e:
+            print(e);
+    else:
         os.system('git clone ' + REPO_URL);
         print('Run the script again, inside the wiki repository this time.');
 def generate(pth):
     print(pth);
     rows = '';
     rowcurr = '';
-    rcnt = 0;
-    plain = str(markdown2.markdown(pth.read_text()));
+    rcnt = 1;
+    parsed = markdown.markdown(pth.read_text());
+    plain = str(parsed);
     plain = re.sub(r'<[^>]+>', '', plain);
+    plain, tbls = tables.extract_tables(plain);
     parags = plain.split('\n\n');
     for p in parags:
         p = p.replace('\n', ' ');
@@ -44,7 +53,19 @@ def generate(pth):
         else:
             rowcurr += p;
     if len(rowcurr) > 0:
-        rows += str(rcnt) + ',' + '"' + rowcurr + '"' + '\n';
+        rows += str(pth) + ' part ' + str(rcnt) + ',' + '"' + rowcurr + '"' + '\n';
+    rcnt = 1;
+    for h, b in tbls:
+        key = h[0];
+        rowcurr = '';
+        for r in b:
+            val = r[0];
+            rowcurr += '- ' + key + ' ' + val + ':\\n';
+            for name, x in islice(zip(h, r), 1, None):
+                rowcurr += '    - ' + name + ': ' + x + '\\n';
+        rows += str(pth) + ' table ' + str(rcnt) + ',' + '"' + rowcurr + '"';
+        rows += '\n';
+        rcnt += 1;
     return rows;
 timestamp = 0;
 try:
