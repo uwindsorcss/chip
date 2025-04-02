@@ -6,10 +6,13 @@ import emoji
 from dotenv import load_dotenv
 load_dotenv()
 
-from uwin_ai_assistant import inference
-
 import config
-from automod import AutomodInterface
+if config.FEAT_ADVISOR:
+    from uwin_ai_assistant import inference
+
+if config.FEAT_AUTOMOD:
+    from automod import AutomodInterface
+    
 from messages import info, error, success, log
 
 # Setup
@@ -17,7 +20,8 @@ from messages import info, error, success, log
 intents = discord.Intents.all()
 bot = discord.Bot(command_prefix="c!", intents=intents, help_command=None)
 
-automod = AutomodInterface()
+if config.FEAT_AUTOMOD: 
+    automod = AutomodInterface()
 
 ADVISOR_CHANNEL_ID = int(os.getenv("ADVISOR_CHANNEL"))
 AUTOMOD_CHANNEL_ID = int(os.getenv("AUTOMOD_CHANNEL"))
@@ -27,7 +31,7 @@ AUTOMOD_CHANNEL_ID = int(os.getenv("AUTOMOD_CHANNEL"))
 @bot.event
 async def on_ready():
     """Triggers when the bot is running"""
-    activity = discord.Game(name="Coming soon!", type=2)
+    activity = discord.Game(name="Being cool | /ask", type=2)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     print("Discord bot online")
 
@@ -38,7 +42,7 @@ async def on_message(message):
         return
     else:
         score = automod.analyze_message(emoji.demojize(message.content))
-        if float(score[1]) > 0.9:
+        if float(score[1]) > 0.8:
             await log(message, float(score[1]), AUTOMOD_CHANNEL_ID)
 
 @bot.event
@@ -48,7 +52,7 @@ async def on_message_edit(message_before, message_after):
         return
     else:
         score = automod.analyze_message(emoji.demojize(message_after.content))
-        if float(score[1]) > 0.9:
+        if float(score[1]) > 0.8:
             await log(message_after, float(score[1]), AUTOMOD_CHANNEL_ID)
 
 # Commands
@@ -71,6 +75,7 @@ async def ask(ctx, query: str):
         await error(ctx, "Error", "This feature is currently disabled")
         return
     if ctx.channel.id == ADVISOR_CHANNEL_ID:
+        await ctx.defer() # Prevent timeout
         author_id = ctx.author.id
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, inference.generate_response, query)
